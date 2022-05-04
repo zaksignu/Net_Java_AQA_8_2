@@ -16,4 +16,11 @@ public class Data {
         private String login;
         private String code;
     }
+    @Value
+    public static class CardBalance extends Data {
+        private String id;
+        private String userId;
+        private String number;
+        private String balance;
+    }
 }
