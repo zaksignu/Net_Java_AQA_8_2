@@ -3,30 +3,23 @@ package ru.netology;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
 import com.github.javafaker.Faker;
-import com.google.gson.Gson;
-import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.filter.log.LogDetail;
 import io.restassured.http.ContentType;
-import io.restassured.parsing.Parser;
 import io.restassured.path.json.JsonPath;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 import lombok.SneakyThrows;
 import lombok.Value;
-import org.apache.commons.dbutils.QueryRunner;
 
 import java.sql.DriverManager;
-import java.util.ArrayList;
 import java.util.Locale;
 
-import static io.restassured.RestAssured.expect;
 import static io.restassured.RestAssured.given;
 
 public class DataWizard {
     private DataWizard() {
     }
-
 
     private static RequestSpecification requestSpec = new RequestSpecBuilder()
             .setBaseUri("http://localhost")
@@ -35,7 +28,6 @@ public class DataWizard {
             .setContentType(ContentType.JSON)
             .log(LogDetail.ALL)
             .build();
-
 
     static Faker ghostOne = new Faker(new Locale("EN"));
 
@@ -61,7 +53,7 @@ public class DataWizard {
 
     @SneakyThrows
     public static void userRegister(FellowOne user) {
-
+        int amount = 100_00;
         try (
                 var conn = DriverManager.getConnection(
                         "jdbc:mysql://localhost:3306/app", "app", "pass"
@@ -77,7 +69,22 @@ public class DataWizard {
                     generateIt() + "','" +
                     user.getId() + "','" +
                     user.getCardOne() + "'," +
-                    "'1000000')");
+                    amount + ")");
+        }
+    }
+
+    @SneakyThrows
+    public static void cleanGarbage(FellowOne user) {
+        try (
+                var conn = DriverManager.getConnection(
+                        "jdbc:mysql://localhost:3306/app", "app", "pass"
+                );
+                var cleanIt = conn.createStatement();
+        ) {
+            cleanIt.execute("DELETE FROM cards where user_id='" +user.getId()+"';");
+            cleanIt.execute("DELETE FROM card_transactions where id='" +user.getId()+"';");
+            cleanIt.execute("DELETE FROM auth_codes where user_id='" +user.getId()+"';");
+            cleanIt.execute("DELETE FROM users where id='" +user.getId()+"';");
         }
 
     }
@@ -96,12 +103,9 @@ public class DataWizard {
                     return rs.getString(1);
                 }
             }
-
-
         }
         return "";
     }
-
 
     @SneakyThrows
     public static String getUserIdFromCards(String id) {
@@ -117,8 +121,6 @@ public class DataWizard {
                     return rs.getString(1);
                 }
             }
-
-
         }
         return "";
     }
@@ -179,6 +181,9 @@ public class DataWizard {
             return newUser;
         }
 
+        public static Data.CardsTransfer makeATransfer(FellowOne from, FellowOne to, int amount){
+            return new Data.CardsTransfer(from.getCardOne(), to.getCardOne(), amount);
+        }
     }
 
     public static class ConnectMe {
@@ -191,16 +196,25 @@ public class DataWizard {
                     .setPort(9999)
                     .setAccept(ContentType.JSON)
                     .setContentType(ContentType.JSON)
-                    .addParam("bearer", token)
                     .log(LogDetail.ALL)
                     .addHeader("Authorization", "Bearer " + token)
                     .build();
             return requestSpec;
         }
 
+        public static void TransferMe(FellowOne first, FellowOne second, int amount, int statusCode) {
+            RequestSpecification tokenSpecification = DataWizard.ConnectMe.Specification(first.getBearToken());
+            given()
+                    .spec(tokenSpecification)
+                    .body(DataWizard.UserManipulating.makeATransfer(first,second,amount))
+                    .when()
+                    .post("/api/transfer")
+                    .then()
+                    .statusCode(statusCode);
+        }
 
         public static void AuthenticateMe(FellowOne ghost) {
-            given() // "дано"
+            given()
                     .spec(requestSpec)
                     .body(DataWizard.UserManipulating.getAuthentInfo(ghost))
                     .when()
@@ -208,7 +222,6 @@ public class DataWizard {
                     .then()
                     .statusCode(200);
         }
-
 
         public static FellowOne VerificateMe(FellowOne ghost) {
             Response response = given()
@@ -236,25 +249,10 @@ public class DataWizard {
             JsonPath jsonPath = new JsonPath(responseBody);
             String id = jsonPath.getString("id").replace("[", "").replace("]", "");
             String number = jsonPath.getString("number").replace("[", "").replace("]", "").replace("*", "").replace(" ", "");
-
             String balance = jsonPath.getString("balance").replace("[", "").replace("]", "");
 
-            //  System.out.println("");
-            return new Data.CardBalance(id, getUserIdFromCards(id), number, balance);
-//
-//            Response response = given()
-//                    .spec(requestSpec)
-//                    .body(DataWizard.UserManipulating.getVerifyInfo(ghost))
-//                    .when()
-//                    .post("/api/auth/verification");
-//            String responseBody = response.getBody().asString();
-//
-//            JsonPath jsonPath = new JsonPath(responseBody);
-//            String token = jsonPath.getString("token");
-//            FellowOne updatedGhost = DataWizard.UserManipulating.updateUserToken(ghost,token);
-//           // return updatedGhost;
+            return new Data.CardBalance(id, getUserIdFromCards(id), number, Integer. parseInt(balance));
         }
-
 
         public static void wrongAuth(FellowOne ghost) {
             given()
@@ -278,44 +276,6 @@ public class DataWizard {
         }
     }
 
-
-//            given() // "дано"
-//                    .spec(requestSpec) // указываем, какую спецификацию используем
-//                    .body(fatBody) // передаём в теле объект, который будет преобразован в JSON
-//                    .when() // "когда"
-//                    .post(path) // на какой путь, относительно BaseUri отправляем запрос
-//                    .then() // "тогда ожидаем"
-//                    .statusCode(200); // код 200 OK
-
-
-//           given() // "дано"
-//                    .spec(requestSpec) // указываем, какую спецификацию используем
-//                    .body(fatBody) // передаём в теле объект, который будет преобразован в JSON
-//                    .when() // "когда"
-//                    .post(path) // на какой путь, относительно BaseUri отправляем запрос
-//                    .then() // "тогда ожидаем"
-//                    .statusCode(200); // код 200 OK
-//            if (type == "verify"){
-//
-//            Response response = given().spec(requestSpec).body(fatBody).when().post(path);
-//            String responseBody = response.getBody().asString();
-//
-//            JsonPath jsonPath = new JsonPath(responseBody);
-//            String user_id = jsonPath.getString("token");
-//                System.out.println("");
-//            }
-
-//            ArrayList<String> amounts =  given() // "дано"
-//                    .spec(requestSpec) // указываем, какую спецификацию используем
-//                    .body(fatBody).when().post(path).then().extract().path("data") ;
-
-    //          System.out.println("");
-    //     }
-
-
-    //  }
-
-
     @Value
     public static class FellowOne {
         private String id;
@@ -326,18 +286,6 @@ public class DataWizard {
         private String cardOne;
     }
 
-
-//    @Value
-//    public static class AuthenEntity   {
-//        private String login;
-//        private String password;
-//    }
-//
-//    @Value
-//    public static class VerifyEntity {
-//        private String login;
-//        private String code;
-//    }
 
 }
 
